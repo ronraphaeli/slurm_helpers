@@ -18,8 +18,11 @@ of course perform chmod +x on both the scripts.
 after all this, you can use the following commands:
 
 node - will show you the servers that you did not exclude, and have at least one free gpu
+
 node -z - will show you the servers that you did not exclude
-node -all - will show you all the servers that have at least one free gpu
+
+node -all - will show you all the servers that have at least one free GPU
+
 node -z -all - will show you all the servers that have at least one free GPU
 
 note that the column of "used GPU" is how many gpus are used by **you** in that server. 
