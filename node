@@ -1,0 +1,82 @@
+#!/bin/bash
+
+# List of servers to exclude by default
+excluded_servers=("server1" "server2")
+
+# Function to remove ANSI escape codes
+remove_ansi() {
+    sed -r 's/\x1B\[[0-9;]*[mK]//g'
+}
+
+# Initialize flags
+show_all=false
+show_zero_gpu=false
+previous_prefix=""
+
+# Parse command-line arguments
+for arg in "$@"; do
+    case $arg in
+        -all)
+            show_all=true
+            shift
+            ;;
+        -z)
+            show_zero_gpu=true
+            shift
+            ;;
+    esac
+done
+
+# Step 1: Run the second script to collect GPU usage and store in associative array
+declare -A gpu_usage
+
+# Store the output of the second script in a variable
+while IFS=" " read -r node gpus; do
+    gpu_usage["$node"]=$gpus
+done < <(<path_to_active_jobs_script>)  # Assuming 'active_jobs' is the second script
+
+# Step 2: Run the original snode command, remove ANSI codes, and process the output
+snode | remove_ansi | while IFS= read -r line; do
+    # If it's the header, print a new custom header
+    if [[ "$line" =~ ^Node ]]; then
+        printf "%-15s %-10s %-10s %-10s\n" "Node" "Free CPU" "Free GPU" "Used GPU"
+    else
+        # Extract the node name (first word)
+        node_name=$(echo "$line" | awk '{print $1}')
+        
+        # Extract the first 4 characters as the node prefix
+        current_prefix="${node_name:0:4}"
+
+        # Initialize a flag to check if this node will be printed
+        should_print=false
+
+        # Extract the "Free" CPU value using regex
+        free_cpu=$(echo "$line" | grep -oP 'Free: \K[0-9]+' | head -n 1)
+        
+        # Extract the "Free" GPU value using regex
+        free_gpu=$(echo "$line" | grep -oP 'Free: \K[0-9]+' | tail -n 1)
+        
+        # Get the used GPU count for this node from the associative array
+        used_gpu=${gpu_usage["$node_name"]}
+        [ -z "$used_gpu" ] && used_gpu=0  # Default to 0 if not found
+
+        # Check if the server should be shown based on the -all flag and excluded list
+        if [[ "$show_all" == true || ! " ${excluded_servers[@]} " =~ " $node_name " ]]; then
+            # Determine if the line should be shown based on free GPU and -z flag
+            if [[ -n "$free_gpu" && ( "$free_gpu" -gt 0 || "$show_zero_gpu" == true ) ]]; then
+                should_print=true  # Mark that we should print this node
+            fi
+        fi
+
+        # Print the divider only if the previous node has been printed and the prefix has changed
+        if [[ "$should_print" == true && "$previous_prefix" != "$current_prefix" && -n "$previous_prefix" ]]; then
+            echo "-------------------------------------------"
+        fi
+
+        # Print the node details if it should be printed
+        if [[ "$should_print" == true ]]; then
+            printf "\e[37m%-15s\e[0m \e[33m%-10s\e[0m \e[32m%-10s\e[0m \e[31m%-10s\e[0m\n" "$node_name" "$free_cpu" "$free_gpu" "$used_gpu"
+            previous_prefix="$current_prefix"  # Update the previous prefix after printing
+        fi
+    fi
+done
