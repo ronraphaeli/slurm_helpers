@@ -1,0 +1,13 @@
+#!/bin/bash
+owner_name="<first 6 letters of your username>"
+
+# Get the list of active jobs for the user using squeue and grep
+squeue | grep $owner_name | while read -r job_id _ _ _ _ _ _ node; do
+    # For each job ID, get the GPU usage
+    gpus=$(squeue --job="$job_id" --format="%b" | tail -n 1 | grep -oP '(?<=gres:gpu:)\d+')
+    
+    # If there is GPU usage, sum the GPUs by node
+    if [ -n "$gpus" ]; then
+        echo "$node $gpus"
+    fi
+done | awk '{node_gpu[$1] += $2} END {for (node in node_gpu) print node, node_gpu[node]}'
